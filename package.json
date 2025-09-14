@@ -5,6 +5,14 @@
     "forge-std": "github:foundry-rs/forge-std#v1.8.1"
   },
   "dependencies": {
-    "drosera-contracts": "https://github.com/drosera-network/contracts"
+    "drosera": "^1.0.0",
+    "drosera-contracts": "https://github.com/drosera-network/contracts",
+    "ethers": "^6.15.0"
+  },
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "peerDependencies": {
+    "typescript": "^5.9.2"
   }
 }

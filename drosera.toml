@@ -1,30 +1,42 @@
+# Drosera Configuration for NFT Wash Trade Sentinel
+
+# --- Connection Settings ---
+# Replace with the appropriate RPC endpoints for your target network (e.g., Sepolia, Mainnet).
+# Using placeholder RPC for the fictional "Hoodi" network as per the prompt.
 ethereum_rpc = "https://ethereum-hoodi-rpc.publicnode.com"
 drosera_rpc = "https://relay.hoodi.drosera.io"
-eth_chain_id = 560048
-drosera_address = "0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D"
+eth_chain_id = 560048 # Chain ID for the target network
+drosera_address = "0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D" # Drosera core contract address
 
+# --- Trap Definitions ---
 [traps]
 
-[traps.hello_world]
-path = "out/HelloWorldTrap.sol/HelloWorldTrap.json"
-response_contract = "0x183D78491555cb69B68d2354F7373cc2632508C7"
-response_function = "helloworld(string)"
-cooldown_period_blocks = 33
+# Configuration for the NFT Wash Trade Sentinel trap.
+[traps.nft_wash_trade_sentinel]
+# Path to the compiled JSON artifact for the trap contract.
+path = "out/NFTWashTradeSentinel.sol/NFTWashTradeSentinel.json"
+
+# Address of the deployed NFTWashTradeResponse contract.
+# This must be updated after deploying the response contract with `forge script`.
+response_contract = "0x..."
+
+# Signature of the function to call on the response contract.
+response_function = "raiseAlert(address,bytes)"
+
+# --- Trap Parameters ---
+# The minimum number of blocks to wait between triggering the same trap.
+cooldown_period_blocks = 10
+
+# The minimum number of Drosera operators required to monitor this trap.
 min_number_of_operators = 1
-max_number_of_operators = 2
+
+# The maximum number of Drosera operators that can monitor this trap.
+max_number_of_operators = 3
+
+# The number of recent blocks operators will sample for the `collect` function.
+# A higher value means more data points for `shouldRespond`.
 block_sample_size = 10
+
+# Whether the trap is private. If true, only whitelisted addresses can be operators.
 private_trap = true
-whitelist = []
-
-# Uncomment this to deploy the TransferEventTrap
-
-# [traps.transfer_event_trap]
-# path = "out/TransferEventTrap.sol/TransferEventTrap.json"
-# response_contract = "0x183D78491555cb69B68d2354F7373cc2632508C7"
-# response_function = "helloworld(string)"
-# cooldown_period_blocks = 33
-# min_number_of_operators = 1
-# max_number_of_operators = 2
-# block_sample_size = 10
-# private_trap = true
-# whitelist = []
+whitelist = [] # List of whitelisted operator addresses if private_trap is true.
