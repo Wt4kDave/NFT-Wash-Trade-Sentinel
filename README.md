@@ -4,7 +4,7 @@ This Drosera trap is designed to detect and alert on potential NFT wash trading 
 
 ## How It Works
 
-The sentinel monitors `Transfer` events of ERC721 tokens. The core logic identifies when the same NFT is repeatedly transferred back and forth between a small set of addresses in a short period. This pattern is a strong indicator of wash trading, where the goal is to artificially inflate the trading volume and price of an NFT.
+The sentinel periodically takes snapshots of the ownership of a specific NFT using the `ownerOf()` function. The core logic identifies when the same NFT is repeatedly transferred back and forth between a small set of addresses in a short period. This pattern is a strong indicator of wash trading, where the goal is to artificially inflate the trading volume and price of an NFT.
 
 ### Heuristics
 

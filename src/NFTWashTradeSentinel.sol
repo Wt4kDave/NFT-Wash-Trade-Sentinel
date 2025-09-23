@@ -12,7 +12,7 @@ import {ERC721} from "solmate/tokens/ERC721.sol";
 contract NFTWashTradeSentinel is ITrap {
     // --- Hardcoded Configuration ---
 
-    ERC721 public NFT_ADDRESS;
+    ERC721 public constant NFT_ADDRESS = ERC721(0x730ceaf5a436ae2542588d94dF7426C56238222b);
 
     // @dev The specific token ID to monitor within the NFT collection.
     uint256 public constant TOKEN_ID = 1;
@@ -23,10 +23,6 @@ contract NFTWashTradeSentinel is ITrap {
     // @dev The second wallet involved in the potential wash trade.
     address public constant WALLET_B = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
 
-    constructor(address _nftAddress) {
-        NFT_ADDRESS = ERC721(_nftAddress);
-    }
-
     // --- ITrap Interface ---
 
     /// @notice Collects the current owner of the monitored NFT.
@@ -34,7 +30,7 @@ contract NFTWashTradeSentinel is ITrap {
     ///      It returns the encoded owner address of the specified TOKEN_ID.
     function collect() external view override returns (bytes memory) {
         address owner = NFT_ADDRESS.ownerOf(TOKEN_ID);
-        return abi.encode(owner, NFT_ADDRESS);
+        return abi.encode(owner);
     }
 
     /// @notice Determines if a response should be triggered based on collected data.
@@ -50,15 +46,15 @@ contract NFTWashTradeSentinel is ITrap {
             return (false, "");
         }
 
-        // We only care about the last 3 snapshots to detect the pattern.
-        (address owner_t2, ) = abi.decode(data[data.length - 3], (address, address)); // State at t-2
-        (address owner_t1, ) = abi.decode(data[data.length - 2], (address, address)); // State at t-1
-        (address owner_t0, address nftAddress) = abi.decode(data[data.length - 1], (address, address)); // Current state (t-0)
+        // In Drosera, data[0] is the most recent sample.
+        (address owner_t0) = abi.decode(data[0], (address)); // Current state (t-0)
+        (address owner_t1) = abi.decode(data[1], (address)); // State at t-1
+        (address owner_t2) = abi.decode(data[2], (address)); // State at t-2
 
         bool isWashTradePattern = (owner_t2 == WALLET_A && owner_t1 == WALLET_B && owner_t0 == WALLET_A);
 
         if (isWashTradePattern) {
-            bytes memory responseData = abi.encode(nftAddress, TOKEN_ID, WALLET_A, WALLET_B);
+            bytes memory responseData = abi.encode(NFT_ADDRESS, TOKEN_ID, WALLET_A, WALLET_B);
             return (true, responseData);
         }
 

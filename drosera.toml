@@ -21,7 +21,7 @@ path = "out/NFTWashTradeSentinel.sol/NFTWashTradeSentinel.json"
 response_contract = "0x..."
 
 # Signature of the function to call on the response contract.
-response_function = "raiseAlert(address,bytes)"
+response_function = "execute(bytes)"
 
 # --- Trap Parameters ---
 # The minimum number of blocks to wait between triggering the same trap.
