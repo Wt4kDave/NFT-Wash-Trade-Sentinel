@@ -27,22 +27,24 @@ contract NFTWashTradeSentinelTest is Test {
     function test_shouldTriggerOnWashTrade() public {
         // --- State 1: Initial state ---
         bytes memory data0 = sentinel.collect();
-        (address owner0) = abi.decode(data0, (address));
-        assertEq(owner0, WALLET_A);
+        NFTWashTradeSentinel.Snap memory snap0 = abi.decode(data0, (NFTWashTradeSentinel.Snap));
+        assertEq(snap0.owner, WALLET_A);
 
         // --- State 2: Transfer from A to B ---
+        vm.roll(block.number + 10);
         vm.prank(WALLET_A);
         MockERC721(NFT_ADDRESS).transferFrom(WALLET_A, WALLET_B, TOKEN_ID);
         bytes memory data1 = sentinel.collect();
-        (address owner1) = abi.decode(data1, (address));
-        assertEq(owner1, WALLET_B);
+        NFTWashTradeSentinel.Snap memory snap1 = abi.decode(data1, (NFTWashTradeSentinel.Snap));
+        assertEq(snap1.owner, WALLET_B);
 
         // --- State 3: Transfer from B back to A ---
+        vm.roll(block.number + 10);
         vm.prank(WALLET_B);
         MockERC721(NFT_ADDRESS).transferFrom(WALLET_B, WALLET_A, TOKEN_ID);
         bytes memory data2 = sentinel.collect();
-        (address owner2) = abi.decode(data2, (address));
-        assertEq(owner2, WALLET_A);
+        NFTWashTradeSentinel.Snap memory snap2 = abi.decode(data2, (NFTWashTradeSentinel.Snap));
+        assertEq(snap2.owner, WALLET_A);
 
         // --- Check shouldRespond ---
         bytes[] memory collectedData = new bytes[](3);
@@ -56,12 +58,82 @@ contract NFTWashTradeSentinelTest is Test {
         assertTrue(should, "Trap should trigger on a wash trade pattern");
 
         // Assert the response data is correct
-        (address nft, uint256 tokenId, address walletA, address walletB) =
-            abi.decode(responseData, (address, uint256, address, address));
-        assertEq(nft, NFT_ADDRESS);
-        assertEq(tokenId, TOKEN_ID);
-        assertEq(walletA, WALLET_A);
-        assertEq(walletB, WALLET_B);
+        bytes memory expectedPayload = abi.encode(
+            address(sentinel.NFT_ADDRESS()),
+            sentinel.TOKEN_ID(),
+            sentinel.WALLET_A(),
+            sentinel.WALLET_B()
+        );
+        bytes memory expectedResponse = abi.encodePacked(sentinel.WASH_TRADE_SELECTOR(), expectedPayload);
+        assertEq(responseData, expectedResponse, "Response data should be correct");
+    }
+
+    /// @notice Tests that the trap correctly identifies a B -> A -> B wash trade pattern.
+    function test_shouldTriggerOnWashTrade_BAB() public {
+        // --- State 0: Transfer to B to set up the initial state ---
+        vm.prank(WALLET_A);
+        MockERC721(NFT_ADDRESS).transferFrom(WALLET_A, WALLET_B, TOKEN_ID);
+
+        // --- State 1: Initial state ---
+        bytes memory data0 = sentinel.collect();
+        NFTWashTradeSentinel.Snap memory snap0 = abi.decode(data0, (NFTWashTradeSentinel.Snap));
+        assertEq(snap0.owner, WALLET_B);
+
+        // --- State 2: Transfer from B to A ---
+        vm.roll(block.number + 10);
+        vm.prank(WALLET_B);
+        MockERC721(NFT_ADDRESS).transferFrom(WALLET_B, WALLET_A, TOKEN_ID);
+        bytes memory data1 = sentinel.collect();
+        NFTWashTradeSentinel.Snap memory snap1 = abi.decode(data1, (NFTWashTradeSentinel.Snap));
+        assertEq(snap1.owner, WALLET_A);
+
+        // --- State 3: Transfer from A back to B ---
+        vm.roll(block.number + 10);
+        vm.prank(WALLET_A);
+        MockERC721(NFT_ADDRESS).transferFrom(WALLET_A, WALLET_B, TOKEN_ID);
+        bytes memory data2 = sentinel.collect();
+        NFTWashTradeSentinel.Snap memory snap2 = abi.decode(data2, (NFTWashTradeSentinel.Snap));
+        assertEq(snap2.owner, WALLET_B);
+
+        // --- Check shouldRespond ---
+        bytes[] memory collectedData = new bytes[](3);
+        collectedData[0] = data2; // t-0 (newest)
+        collectedData[1] = data1; // t-1
+        collectedData[2] = data0; // t-2 (oldest)
+
+        (bool should, ) = sentinel.shouldRespond(collectedData);
+
+        // Assert the trap should trigger
+        assertTrue(should, "Trap should trigger on a B->A->B wash trade pattern");
+    }
+
+    /// @notice Tests that the trap does not trigger if transfers are outside the block window.
+    function test_shouldNotTriggerOutsideWindow() public {
+        // --- State 1: Initial state ---
+        bytes memory data0 = sentinel.collect();
+
+        // --- State 2: Transfer from A to B ---
+        vm.roll(block.number + 50);
+        vm.prank(WALLET_A);
+        MockERC721(NFT_ADDRESS).transferFrom(WALLET_A, WALLET_B, TOKEN_ID);
+        bytes memory data1 = sentinel.collect();
+
+        // --- State 3: Transfer from B back to A (outside the window) ---
+        vm.roll(block.number + sentinel.BLOCK_WINDOW() + 1);
+        vm.prank(WALLET_B);
+        MockERC721(NFT_ADDRESS).transferFrom(WALLET_B, WALLET_A, TOKEN_ID);
+        bytes memory data2 = sentinel.collect();
+
+        // --- Check shouldRespond ---
+        bytes[] memory collectedData = new bytes[](3);
+        collectedData[0] = data2; // t-0
+        collectedData[1] = data1; // t-1
+        collectedData[2] = data0; // t-2
+
+        (bool should, ) = sentinel.shouldRespond(collectedData);
+
+        // Assert the trap should NOT trigger
+        assertFalse(should, "Trap should not trigger outside the block window");
     }
 
     /// @notice Tests that the trap does not trigger on a simple, one-way transfer.
@@ -70,6 +142,7 @@ contract NFTWashTradeSentinelTest is Test {
         bytes memory data0 = sentinel.collect();
 
         // --- State 2: Transfer from A to B ---
+        vm.roll(block.number + 10);
         vm.prank(WALLET_A);
         MockERC721(NFT_ADDRESS).transferFrom(WALLET_A, WALLET_B, TOKEN_ID);
         bytes memory data1 = sentinel.collect();

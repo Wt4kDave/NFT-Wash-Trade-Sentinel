@@ -10,6 +10,14 @@ import {ERC721} from "solmate/tokens/ERC721.sol";
 /// @dev This is a stateless trap designed for the Drosera Protocol.
 ///      It monitors ownership of a single, hardcoded NFT.
 contract NFTWashTradeSentinel is ITrap {
+    // --- Data Structures ---
+
+    /// @dev Holds the snapshot data collected at a specific block.
+    struct Snap {
+        address owner;
+        uint256 blockNum;
+    }
+
     // --- Hardcoded Configuration ---
 
     ERC721 public constant NFT_ADDRESS = ERC721(0x730ceaf5a436ae2542588d94dF7426C56238222b);
@@ -23,39 +31,55 @@ contract NFTWashTradeSentinel is ITrap {
     // @dev The second wallet involved in the potential wash trade.
     address public constant WALLET_B = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
 
+    // @dev The maximum number of blocks between the first and last transaction.
+    uint256 public constant BLOCK_WINDOW = 100;
+
+    // @dev 4-byte selector for the response function, to prevent misrouting.
+    bytes4 public constant WASH_TRADE_SELECTOR = bytes4(keccak256("WashTradeDetected(address,uint256,address,address)"));
+
     // --- ITrap Interface ---
 
-    /// @notice Collects the current owner of the monitored NFT.
+    /// @notice Collects the current owner of the monitored NFT and the block number.
     /// @dev This function is called periodically by the Drosera network.
-    ///      It returns the encoded owner address of the specified TOKEN_ID.
+    ///      It returns the encoded Snap struct containing the owner and block number.
     function collect() external view override returns (bytes memory) {
-        address owner = NFT_ADDRESS.ownerOf(TOKEN_ID);
-        return abi.encode(owner);
+        Snap memory snap = Snap({
+            owner: NFT_ADDRESS.ownerOf(TOKEN_ID),
+            blockNum: block.number
+        });
+        return abi.encode(snap);
     }
 
     /// @notice Determines if a response should be triggered based on collected data.
-    /// @dev This function is called by the Drosera network with an array of data
-    ///      from previous `collect` calls. It looks for a pattern where the NFT
-    ///      ownership moves from WALLET_A to WALLET_B and then back to WALLET_A.
-    /// @param data An array of bytes, where each element is an abi-encoded owner address.
+    /// @dev It looks for a pattern where NFT ownership moves between WALLET_A and WALLET_B
+    ///      within a defined block window.
+    /// @param data An array of bytes, where each element is an abi-encoded Snap struct.
     /// @return shouldRespond A boolean indicating whether to trigger the response.
     /// @return responseData The data to be passed to the response contract if shouldRespond is true.
     function shouldRespond(bytes[] calldata data) external pure override returns (bool, bytes memory) {
-        // A wash trade pattern A -> B -> A requires at least 3 data points.
+        // A wash trade pattern requires at least 3 data points.
         if (data.length < 3) {
             return (false, "");
         }
 
         // In Drosera, data[0] is the most recent sample.
-        (address owner_t0) = abi.decode(data[0], (address)); // Current state (t-0)
-        (address owner_t1) = abi.decode(data[1], (address)); // State at t-1
-        (address owner_t2) = abi.decode(data[2], (address)); // State at t-2
+        Snap memory snap_t0 = abi.decode(data[0], (Snap)); // Current state (t-0)
+        Snap memory snap_t1 = abi.decode(data[1], (Snap)); // State at t-1
+        Snap memory snap_t2 = abi.decode(data[2], (Snap)); // State at t-2
 
-        bool isWashTradePattern = (owner_t2 == WALLET_A && owner_t1 == WALLET_B && owner_t0 == WALLET_A);
+        // 1. Check if the transfers happened within the defined block window.
+        if (snap_t0.blockNum > snap_t2.blockNum + BLOCK_WINDOW) {
+            return (false, "");
+        }
 
-        if (isWashTradePattern) {
+        // 2. Check for both A -> B -> A and B -> A -> B patterns.
+        bool patternABA = (snap_t2.owner == WALLET_A && snap_t1.owner == WALLET_B && snap_t0.owner == WALLET_A);
+        bool patternBAB = (snap_t2.owner == WALLET_B && snap_t1.owner == WALLET_A && snap_t0.owner == WALLET_B);
+
+        if (patternABA || patternBAB) {
+            // 3. Tag the payload with the selector.
             bytes memory responseData = abi.encode(NFT_ADDRESS, TOKEN_ID, WALLET_A, WALLET_B);
-            return (true, responseData);
+            return (true, abi.encodePacked(WASH_TRADE_SELECTOR, responseData));
         }
 
         return (false, "");
